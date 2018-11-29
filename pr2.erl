@@ -1,6 +1,9 @@
 % Brandon Blaschke Assignment 2
 -module(pr2).
 -import(re, [replace/3]).
+-import(file, [read_file/1,close/1,open/2]).
+-import(binary, [split/3]).
+-import(io, [get_line/2]).
 -compile(export_all).
 
 %
@@ -75,14 +78,31 @@ print({idiv,E1, E2}) ->
 removeStuff({H,T}) ->
     H.
 
-parse(A) -> % from fycth https://stackoverflow.com/questions/12794358/how-to-strip-all-blank-characters-in-a-string-in-erlang
-    B = re:replace(A, "\\s+", "", [global,{return,list}]),
-    parse2(B).
+% Reads a list of expressions from a text file and parses it. 
+% Got the code for this here and made some changes https://stackoverflow.com/questions/2475270/how-to-read-the-contents-of-a-file-in-erlang
+-spec readlines(string()) -> {string()}.
+
+readlines(FileName) ->
+    {ok, Device} = file:open(FileName, [read]),
+    try get_all_lines(Device)
+      after file:close(Device)
+    end.
+
+get_all_lines(Device) ->
+    case io:get_line(Device, "") of
+        eof  -> [];
+        Line -> 
+            NewLine = re:replace(Line, "$\n", "", [global,{return,list}]),
+            [NewLine | get_all_lines(Device)]
+    end.
+
+parse(Line) -> 
+    NewLine = re:replace(Line, "\s", "", [global,{return,list}]),
+    parse2(NewLine).
 
 -spec parse2(string()) -> {expr(), string()}.
 
 parse2([$(|Rest]) ->                            % starts with a '('
-    %   [$|Rest4]    = parse2(Rest4),
       {E1,Rest1}     = parse2(Rest),            % then an expression
       [Op|Rest2]     = Rest1,                  % then an operator, '+' or '*'
       {E2,Rest3}     = parse2(Rest2),           % then another expression
@@ -92,7 +112,6 @@ parse2([$(|Rest]) ->                            % starts with a '('
 	  $* -> {mul,E1,E2};
       $% -> {mod,E1,E2};
       $# -> {idiv,E1,E2}
-    %   $\s -> parse2(Rest)
         end,
        RestFinal};
 
