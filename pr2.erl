@@ -1,9 +1,9 @@
 % Brandon Blaschke Assignment 2
 -module(pr2).
 -import(re, [replace/3]).
--import(file, [read_file/1,close/1,open/2]).
+-import(file, [read_file/1,close/1,open/2,write_file/2]).
 -import(binary, [split/3]).
--import(io, [get_line/2]).
+-import(io, [get_line/2, fwrite/2, format/3]).
 -compile(export_all).
 
 %
@@ -167,6 +167,16 @@ get_while(P,[Ch|Rest]) ->
 get_while(_P,[]) ->
     {[],[]}.
 
+% Reads each line of text and parses that text, returning a list of paresed text
+%-spec parseLines([string()]) -> [expr()].
+
+parseLines([]) -> [];
+
+parseLines([H | T]) ->
+    Parsed = parse(H),
+    Expr = removeStuff(Parsed),
+    [Expr | parseLines(T)].
+
 %
 % Evaluate an expression
 %
@@ -187,6 +197,16 @@ eval(Env, {mod, E1, E2}) ->
     eval(Env, E1) rem eval(Env,E2);
 eval(Env, {idiv,E1,E2}) ->
     eval(Env, E1) div eval(Env,E2). 
+
+% Evalulate multiple lines of a list of expressions, uses the default environment given
+-spec evalLines([expr()]) -> [integer()].
+
+evalLines([]) -> [];
+
+evalLines([H | T]) ->
+    Val = eval([{a,23},{b,-12}], H),
+    [integer_to_list(Val) | evalLines(T)].
+
 
 %
 % Compiler and virtual machine
@@ -261,6 +281,15 @@ run([],_Env,[N]) ->
 execute(Env,Expr) ->
     run(compile(Expr),Env).
 
+% RUNNING THE PROGRAM
+
+% Runs the program using eval method and writes output
+mymain1() ->
+    Lines = readlines("test.txt"),
+    Parsed = parseLines(Lines),
+    Values = evalLines(Parsed),
+    Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
+    write_file("./output.txt", Text).
 
 
 % Auxiliary function: lookup a
