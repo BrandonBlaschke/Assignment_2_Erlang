@@ -115,7 +115,7 @@ precedence(Val) ->
 	   $* -> 2;
        $% -> 2;
        $# -> 2;
-       "(" -> 3 %For both ( and null
+       "(" -> 3 
     end.
 
 % Represents a output stack which will be used to read from 
@@ -131,10 +131,24 @@ popOps(Ch, OutStack, []) ->
 popOps(Ch, OutStack, [OpH|OpT]) ->
     Head = precedence(OpH),
     Op = precedence(Ch),
+    io:format("head ~p~n", [Head]),
+    io:format("Op ~p~n", [Op]),
     if 
-        (Op =/= 3 andalso Op =< Head) -> popOps(Ch, [OpH|OutStack], OpT);
+        (Head =/= 3 andalso Op =< Head) -> popOps(Ch, [OpH|OutStack], OpT);
         true -> {OutStack, [Ch, OpH|OpT]}
     end.
+
+% Pops operators off the stack and into the OutStack until it hits a "("
+-spec popPar(outStack(), opStack()) -> {outStack(), opStack()}.
+
+popPar(OutStack, [OpH|OpT]) -> 
+    if 
+        OpH == "(" -> {OutStack, OpT};
+        true -> popPar([OpH|OutStack], OpT)
+    end.
+
+%cd("C:/Users/rogka_000/Documents/TCSS 480/Assignment_2").
+%  pr2:parseShun("(3+3)", [], []).
 
 -spec parseShun(string(), outStack(), opStack()) -> [string()].
 
@@ -152,7 +166,11 @@ parseShun([$(|Rest], OutStack, OpStack) ->
     parseShun(Rest, OutStack, ["("|OpStack]);
 
 % If Operator is ")" for every op before "(" add to stack
-% parseShun([$)|Rest], OutStack, OpStack) ->
+parseShun([$)|Rest], OutStack, OpStack) ->
+    io:format("Find ~p~n", [OpStack]),
+    {NewOutStack, NewOpStack} = popPar(OutStack, OpStack),
+    io:format("Result ~p~n", [NewOutStack]),
+    parseShun(Rest, NewOutStack, NewOpStack);
 
 % If Operator is +, *, #, or %, check precedence before adding to OpStack
 parseShun([Ch|Rest], OutStack, OpStack) when ((Ch == $* orelse Ch == $#) orelse (Ch == $+ orelse Ch == $%)) ->
@@ -165,10 +183,15 @@ parseShun([Ch|Rest], OutStack, OpStack) when ((Ch == $* orelse Ch == $#) orelse 
 parseShun([Ch|Rest], Output, []) when ((Ch == $+ orelse Ch == $-) orelse $( == Ch) ->
     parseShun(Rest, Output, [Ch]);
 
+parseShun([], OutStack, []) ->
+    OutStack;
+
 % If End of string, pop everything to OutStack
 parseShun([], OutStack, OpStack) ->
     io:format("Done ~p~n", [OpStack]),
     [OpStack|OutStack].
+
+
 
 -spec parse2(string()) -> {expr(), string()}.
 
