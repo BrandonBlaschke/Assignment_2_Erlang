@@ -3,7 +3,7 @@
 -import(re, [replace/3]).
 -import(file, [read_file/1,close/1,open/2,write_file/2]).
 -import(binary, [split/3]).
--import(io, [get_line/2, fwrite/2, format/3]).
+-import(io, [get_line/2, fwrite/2, format/3, format/2]).
 -compile(export_all).
 
 %
@@ -96,9 +96,79 @@ get_all_lines(Device) ->
             [NewLine | get_all_lines(Device)]
     end.
 
+% Wrapper for the parse function as this removes all spacing, then calls the actual parse function
+% Takes a string of characters that represents an equation and returns it parsed. 
 parse(Line) -> 
     NewLine = re:replace(Line, "\s", "", [global,{return,list}]),
     parse2(NewLine).
+
+% precedence takes a string of a operator, and returns its precedence as a int for comparsion 
+-spec precedence(string()) -> integer().
+
+precedence(Val) ->
+    case Val of
+      "+" -> 1;
+	  "*" -> 2;
+      "%" -> 2;
+      "#" -> 2;
+       $+ -> 1;
+	   $* -> 2;
+       $% -> 2;
+       $# -> 2;
+       "(" -> 3 %For both ( and null
+    end.
+
+% Represents a output stack which will be used to read from 
+-type outStack() :: [string()].
+% Represents a operator stack which will hold out operators during parsing 
+-type opStack() :: [string()]. 
+
+-spec popOps(string(), outStack(), opStack()) -> {outStack(), opStack()}.
+
+popOps(Ch, OutStack, []) ->
+    {OutStack, [Ch]};
+
+popOps(Ch, OutStack, [OpH|OpT]) ->
+    Head = precedence(OpH),
+    Op = precedence(Ch),
+    if 
+        (Op =/= 3 andalso Op =< Head) -> popOps(Ch, [OpH|OutStack], OpT);
+        true -> {OutStack, [Ch, OpH|OpT]}
+    end.
+
+-spec parseShun(string(), outStack(), opStack()) -> [string()].
+
+% if number add to output stack 
+parseShun([Ch|Rest], OutStack, OpStack) when ($0 =< Ch andalso Ch =< $9) orelse Ch==$- ->
+    {Succeeds,Remainder} = get_while(fun is_digit/1,Rest),
+    Num = list_to_integer([Ch|Succeeds]),
+    NewOut = [Num|OutStack],
+    io:format("Nums ~p~n", [NewOut]),
+    io:format("Ops ~p~n", [OpStack]),    
+    parseShun(Remainder, NewOut, OpStack);
+
+% If Operator is "(" then add to operator stack
+parseShun([$(|Rest], OutStack, OpStack) ->
+    parseShun(Rest, OutStack, ["("|OpStack]);
+
+% If Operator is ")" for every op before "(" add to stack
+% parseShun([$)|Rest], OutStack, OpStack) ->
+
+% If Operator is +, *, #, or %, check precedence before adding to OpStack
+parseShun([Ch|Rest], OutStack, OpStack) when ((Ch == $* orelse Ch == $#) orelse (Ch == $+ orelse Ch == $%)) ->
+    {NewOutStack, NewOpStack} = popOps(Ch,OutStack,OpStack),
+    io:format("Adding Ops ~p~n", [NewOpStack]),    
+    parseShun(Rest, NewOutStack, NewOpStack);
+
+
+% If OpStack is empty and the Ch is a Operator, add it to OpStack
+parseShun([Ch|Rest], Output, []) when ((Ch == $+ orelse Ch == $-) orelse $( == Ch) ->
+    parseShun(Rest, Output, [Ch]);
+
+% If End of string, pop everything to OutStack
+parseShun([], OutStack, OpStack) ->
+    io:format("Done ~p~n", [OpStack]),
+    [OpStack|OutStack].
 
 -spec parse2(string()) -> {expr(), string()}.
 
