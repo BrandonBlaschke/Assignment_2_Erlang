@@ -4,6 +4,7 @@
 -import(file, [read_file/1,close/1,open/2,write_file/2]).
 -import(binary, [split/3]).
 -import(io, [get_line/2, fwrite/2, format/3, format/2]).
+-import(lists,[reverse/1]).
 -compile(export_all).
 
 %
@@ -190,6 +191,40 @@ parseShun([], OutStack, []) ->
 parseShun([], OutStack, OpStack) ->
     io:format("Done ~p~n", [OpStack]),
     [OpStack|OutStack].
+
+-type numStack() :: [string()].
+
+-spec convertToString(outStack(), numStack(), string()) -> string().
+
+%REMEBER TO REVERSE LIST BEFORE CALLING THIS
+% Converts the OutStack from the Shunting algorithom into a string, with correct "()"
+
+convertToString([], NumStack, Final) -> 
+    io:format("Final ~p~n", NumStack);
+
+% convertToString([], NumStack, Final) -> NumStack;
+
+% If a number add to NumStack
+convertToString([H|Rest], NumStack, Final) when ((H =/= $* andalso H =/= $#) andalso (H =/= $+ andalso H =/= $%)) ->
+    io:format("Done ~p~n", [H]),
+    convertToString(Rest, [H|NumStack], Final);
+
+% If operator then pop next two numbers and add parentheses 
+convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $* ->
+    NewString = "(" ++ integer_to_list(N1) ++ "*" ++ integer_to_list(N2) ++ ")",
+    convertToString(Rest, [NewString | Tail], NewString);
+
+convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $+ ->
+    NewString = "(" ++ integer_to_list(N1) ++ "+" ++ integer_to_list(N2) ++ ")";
+    convertToString(Rest, [NewString | Tail], NewString);
+
+convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $# ->
+    NewString = "(" ++ integer_to_list(N1) ++ "#" ++ integer_to_list(N2) ++ ")",
+    convertToString(Rest, [NewString | Tail], NewString);
+
+convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $% ->
+    NewString = "(" ++ integer_to_list(N1) ++ "%" ++ integer_to_list(N2) ++ ")",
+    convertToString(Rest, [NewString | Tail], NewString).
 
 
 
