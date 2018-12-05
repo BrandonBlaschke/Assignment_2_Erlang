@@ -101,7 +101,11 @@ get_all_lines(Device) ->
 % Takes a string of characters that represents an equation and returns it parsed. 
 parse(Line) -> 
     NewLine = re:replace(Line, "\s", "", [global,{return,list}]),
-    parse2(NewLine).
+    Stack = parseShun(NewLine,[],[]),
+    % io:format("NewStack ~p~n", [Stack]),
+    Infix = convertToString(lists:reverse(Stack), []),
+    % io:format("New Exp ~p~n", [Infix]),
+    parse2(Infix).
 
 % precedence takes a string of a operator, and returns its precedence as a int for comparsion 
 -spec precedence(string()) -> integer().
@@ -132,8 +136,8 @@ popOps(Ch, OutStack, []) ->
 popOps(Ch, OutStack, [OpH|OpT]) ->
     Head = precedence(OpH),
     Op = precedence(Ch),
-    io:format("head ~p~n", [Head]),
-    io:format("Op ~p~n", [Op]),
+    % io:format("head ~p~n", [Head]),
+    % io:format("Op ~p~n", [Op]),
     if 
         (Head =/= 3 andalso Op =< Head) -> popOps(Ch, [OpH|OutStack], OpT);
         true -> {OutStack, [Ch, OpH|OpT]}
@@ -156,10 +160,10 @@ popPar(OutStack, [OpH|OpT]) ->
 % if number add to output stack 
 parseShun([Ch|Rest], OutStack, OpStack) when ($0 =< Ch andalso Ch =< $9) orelse Ch==$- ->
     {Succeeds,Remainder} = get_while(fun is_digit/1,Rest),
-    Num = list_to_integer([Ch|Succeeds]),
+    Num = [Ch|Succeeds],
     NewOut = [Num|OutStack],
-    io:format("Nums ~p~n", [NewOut]),
-    io:format("Ops ~p~n", [OpStack]),    
+    % io:format("Nums ~p~n", [NewOut]),
+    % io:format("Ops ~p~n", [OpStack]),    
     parseShun(Remainder, NewOut, OpStack);
 
 % If Operator is "(" then add to operator stack
@@ -168,15 +172,17 @@ parseShun([$(|Rest], OutStack, OpStack) ->
 
 % If Operator is ")" for every op before "(" add to stack
 parseShun([$)|Rest], OutStack, OpStack) ->
-    io:format("Find ~p~n", [OpStack]),
+    % io:format("Find ~p~n", [OpStack]),
     {NewOutStack, NewOpStack} = popPar(OutStack, OpStack),
-    io:format("Result ~p~n", [NewOutStack]),
+    % io:format("Result ~p~n", [NewOutStack]),
+    % io:format("OpStack ~p~n", [NewOpStack]),
+    % io:format("Rest ~p~n", [Rest]),
     parseShun(Rest, NewOutStack, NewOpStack);
 
 % If Operator is +, *, #, or %, check precedence before adding to OpStack
 parseShun([Ch|Rest], OutStack, OpStack) when ((Ch == $* orelse Ch == $#) orelse (Ch == $+ orelse Ch == $%)) ->
     {NewOutStack, NewOpStack} = popOps(Ch,OutStack,OpStack),
-    io:format("Adding Ops ~p~n", [NewOpStack]),    
+    % io:format("Adding Ops ~p~n", [NewOpStack]),    
     parseShun(Rest, NewOutStack, NewOpStack);
 
 
@@ -185,48 +191,46 @@ parseShun([Ch|Rest], Output, []) when ((Ch == $+ orelse Ch == $-) orelse $( == C
     parseShun(Rest, Output, [Ch]);
 
 parseShun([], OutStack, []) ->
+    % io:format("Done1 ~p~n", [OutStack]),
     OutStack;
 
 % If End of string, pop everything to OutStack
 parseShun([], OutStack, OpStack) ->
-    io:format("Done ~p~n", [OpStack]),
+    % io:format("Done ~p~n", [OpStack]),
     [OpStack|OutStack].
 
 -type numStack() :: [string()].
 
--spec convertToString(outStack(), numStack(), string()) -> string().
+-spec convertToString(outStack(), numStack()) -> string().
 
 %REMEBER TO REVERSE LIST BEFORE CALLING THIS
 % Converts the OutStack from the Shunting algorithom into a string, with correct "()"
 
-convertToString([], NumStack, Final) -> 
-    io:format("Final ~p~n", NumStack);
+convertToString([], [H|T]) -> H;
 
-% convertToString([], NumStack, Final) -> NumStack;
+% convertToString([], NumStack) -> NumStack;
 
 % If a number add to NumStack
-convertToString([H|Rest], NumStack, Final) when ((H =/= $* andalso H =/= $#) andalso (H =/= $+ andalso H =/= $%)) ->
-    io:format("Done ~p~n", [H]),
-    convertToString(Rest, [H|NumStack], Final);
+convertToString([H|Rest], NumStack) when ((H =/= $* andalso H =/= $#) andalso (H =/= $+ andalso H =/= $%)) ->
+    % io:format("Done ~p~n", [H]),
+    convertToString(Rest, [H|NumStack]);
 
 % If operator then pop next two numbers and add parentheses 
-convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $* ->
-    NewString = "(" ++ integer_to_list(N1) ++ "*" ++ integer_to_list(N2) ++ ")",
-    convertToString(Rest, [NewString | Tail], NewString);
+convertToString([H|Rest], [N1, N2 | Tail]) when H == $* ->
+    NewString = "(" ++ N1 ++ "*" ++ N2 ++ ")",
+    convertToString(Rest, [NewString | Tail]);
 
-convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $+ ->
-    NewString = "(" ++ integer_to_list(N1) ++ "+" ++ integer_to_list(N2) ++ ")";
-    convertToString(Rest, [NewString | Tail], NewString);
+convertToString([H|Rest], [N1, N2 | Tail]) when H == $+ ->
+    NewString = "(" ++ N1 ++ "+" ++ N2 ++ ")",
+    convertToString(Rest, [NewString | Tail]);
 
-convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $# ->
-    NewString = "(" ++ integer_to_list(N1) ++ "#" ++ integer_to_list(N2) ++ ")",
-    convertToString(Rest, [NewString | Tail], NewString);
+convertToString([H|Rest], [N1, N2 | Tail]) when H == $# ->
+    NewString = "(" ++ N1 ++ "#" ++ N2 ++ ")",
+    convertToString(Rest, [NewString | Tail]);
 
-convertToString([H|Rest], [N1, N2 | Tail], Final) when H == $% ->
-    NewString = "(" ++ integer_to_list(N1) ++ "%" ++ integer_to_list(N2) ++ ")",
-    convertToString(Rest, [NewString | Tail], NewString).
-
-
+convertToString([H|Rest], [N1, N2 | Tail]) when H == $% ->
+    NewString = "(" ++ N1 ++ "%" ++ N2 ++ ")",
+    convertToString(Rest, [NewString | Tail]).
 
 -spec parse2(string()) -> {expr(), string()}.
 
