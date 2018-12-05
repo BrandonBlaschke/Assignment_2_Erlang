@@ -1,3 +1,2 @@
-expr.beam
-pr2.beam
+*.beam
 *.txt

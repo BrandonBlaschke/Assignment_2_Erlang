@@ -75,8 +75,12 @@ print({idiv,E1, E2}) ->
 
 % recognise a fully-bracketed expression, with no spaces etc.
 
+% Remove Spaces from string
+removeSpaces(String) ->
+    re:replace(String, "\s", "", [global,{return,list}]).
+
 % Removes the tail of a list 
-removeStuff({H,T}) ->
+removeTail({H,_T}) ->
     H.
 
 % Reads a list of expressions from a text file and parses it. 
@@ -99,8 +103,8 @@ get_all_lines(Device) ->
 
 % Wrapper for the parse function as this removes all spacing, then calls the actual parse function
 % Takes a string of characters that represents an equation and returns it parsed. 
-parse1(Line, Rev) -> 
-    NewLine = re:replace(Line, "\s", "", [global,{return,list}]),
+parse(Line, Rev) -> 
+    NewLine = removeSpaces(Line),
     Stack = parseShun(NewLine,[],[]),
     % io:format("NewStack ~p~n", [Stack]),
     Infix = convertToString(lists:reverse(Stack), [], Rev),
@@ -110,6 +114,7 @@ parse1(Line, Rev) ->
 % precedence takes a string of a operator, and returns its precedence as a int for comparsion 
 -spec precedence(string()) -> integer().
 
+% Val is the precedence of the operator to get 
 precedence(Val) ->
     case Val of
       "+" -> 1;
@@ -125,19 +130,25 @@ precedence(Val) ->
 
 % Represents a output stack which will be used to read from 
 -type outStack() :: [string()].
+
 % Represents a operator stack which will hold out operators during parsing 
 -type opStack() :: [string()]. 
 
+% Pops off operators until it hits a "("
+% string() - Current operator to be added to stack
+% outStack() - Output stack for the result
+% opStack() - Operator stack
+% Returns the new outStack and opStack modified 
 -spec popOps(string(), outStack(), opStack()) -> {outStack(), opStack()}.
 
+% When at the end add the operator to the opStack
 popOps(Ch, OutStack, []) ->
     {OutStack, [Ch]};
 
+% If precedence is not a "(" or a bigger operator then pop off current head 
 popOps(Ch, OutStack, [OpH|OpT]) ->
     Head = precedence(OpH),
     Op = precedence(Ch),
-    % io:format("head ~p~n", [Head]),
-    % io:format("Op ~p~n", [Op]),
     if 
         (Head =/= 3 andalso Op =< Head) -> popOps(Ch, [OpH|OutStack], OpT);
         true -> {OutStack, [Ch, OpH|OpT]}
@@ -146,15 +157,15 @@ popOps(Ch, OutStack, [OpH|OpT]) ->
 % Pops operators off the stack and into the OutStack until it hits a "("
 -spec popPar(outStack(), opStack()) -> {outStack(), opStack()}.
 
+% Pop parenthese off if found, return new opStack
 popPar(OutStack, [OpH|OpT]) -> 
     if 
         OpH == "(" -> {OutStack, OpT};
         true -> popPar([OpH|OutStack], OpT)
     end.
 
-%cd("C:/Users/rogka_000/Documents/TCSS 480/Assignment_2").
-%  pr2:parseShun("(3+3)", [], []).
-
+% Parses a string into a stack in postfix order with operator precedence
+% Call using string() as expression, outStack and opStack as []. Returns the finished outStack
 -spec parseShun(string(), outStack(), opStack()) -> [string()].
 
 % if number add to output stack 
@@ -162,8 +173,6 @@ parseShun([Ch|Rest], OutStack, OpStack) when ($0 =< Ch andalso Ch =< $9) orelse 
     {Succeeds,Remainder} = get_while(fun is_digit/1,Rest),
     Num = [Ch|Succeeds],
     NewOut = [Num|OutStack],
-    % io:format("Nums ~p~n", [NewOut]),
-    % io:format("Ops ~p~n", [OpStack]),    
     parseShun(Remainder, NewOut, OpStack);
 
 % If variable add to output stack
@@ -179,41 +188,35 @@ parseShun([$(|Rest], OutStack, OpStack) ->
 
 % If Operator is ")" for every op before "(" add to stack
 parseShun([$)|Rest], OutStack, OpStack) ->
-    % io:format("Find ~p~n", [OpStack]),
     {NewOutStack, NewOpStack} = popPar(OutStack, OpStack),
-    % io:format("Result ~p~n", [NewOutStack]),
-    % io:format("OpStack ~p~n", [NewOpStack]),
-    % io:format("Rest ~p~n", [Rest]),
     parseShun(Rest, NewOutStack, NewOpStack);
 
 % If Operator is +, *, #, or %, check precedence before adding to OpStack
 parseShun([Ch|Rest], OutStack, OpStack) when ((Ch == $* orelse Ch == $#) orelse (Ch == $+ orelse Ch == $%)) ->
     {NewOutStack, NewOpStack} = popOps(Ch,OutStack,OpStack),
-    % io:format("Adding Ops ~p~n", [NewOpStack]),    
     parseShun(Rest, NewOutStack, NewOpStack);
-
 
 % If OpStack is empty and the Ch is a Operator, add it to OpStack
 parseShun([Ch|Rest], Output, []) when ((Ch == $+ orelse Ch == $-) orelse $( == Ch) ->
     parseShun(Rest, Output, [Ch]);
 
+% Nothing left return the outStack 
 parseShun([], OutStack, []) ->
-    % io:format("Done1 ~p~n", [OutStack]),
     OutStack;
 
 % If End of string, pop everything to OutStack
 parseShun([], OutStack, OpStack) ->
-    % io:format("Done ~p~n", [OpStack]),
     [OpStack|OutStack].
 
+% Holds a list of strings that represent the final infix notation of the outStack 
 -type numStack() :: [string()].
-
--spec convertToString(outStack(), numStack(), integer()) -> string().
 
 %REMEBER TO REVERSE LIST BEFORE CALLING THIS
 % Converts the OutStack from the Shunting algorithom into a string, with correct "()"
+% integer() - Reverses the order if 1, 0 to not reverse 
+-spec convertToString(outStack(), numStack(), integer()) -> string().
 
-convertToString([], [H|T], Rev) -> H;
+convertToString([], [H|_T], _Rev) -> H;
 
 % convertToString([], NumStack) -> NumStack;
 
@@ -230,7 +233,7 @@ convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $* ->
         true -> convertToString(Rest, [NewString | Tail], Rev)
     end;
     
-
+% If current element is a +, add N1 and N2
 convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $+ ->
     NewString = "(" ++ N1 ++ "+" ++ N2 ++ ")",
     if 
@@ -238,7 +241,7 @@ convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $+ ->
         true -> convertToString(Rest, [NewString | Tail], Rev)
     end;
     
-
+% If current element is a #, divide N1 and N2
 convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $# ->
     NewString = "(" ++ N1 ++ "#" ++ N2 ++ ")",
     if 
@@ -246,7 +249,7 @@ convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $# ->
         true -> convertToString(Rest, [NewString | Tail], Rev)
     end;
     
-
+% If current element is a %, rem N1 and N2
 convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $% ->
     NewString = "(" ++ N1 ++ "%" ++ N2 ++ ")",
     if 
@@ -272,14 +275,12 @@ parse2([$(|Rest]) ->                            % starts with a '('
 
 % recognise an integer, a sequence of digits
 % with an optional '-' sign at the start
-
 parse2([Ch|Rest]) when ($0 =< Ch andalso Ch =< $9) orelse Ch==$- ->
     {Succeeds,Remainder} = get_while(fun is_digit/1,Rest),
     {{num, list_to_integer([Ch|Succeeds])}, Remainder};
 
 
 % recognise a variable: an atom built of small letters only.
-
 parse2([Ch|Rest])  when $a =< Ch andalso Ch =< $z ->
     {Succeeds,Remainder} = get_while(fun is_alpha/1,Rest),
     {{var, list_to_atom([Ch|Succeeds])}, Remainder}.
@@ -323,19 +324,18 @@ get_while(_P,[]) ->
     {[],[]}.
 
 % Reads each line of text and parses that text, returning a list of paresed text
-%-spec parseLines([string()]) -> [expr()].
-
-parseLines([], Rev) -> [];
+% [] is a list of strings to parse
+% _Rev is Reverse: 1 to reverse 0 to not
+parseLines([], _Rev) -> [];
 
 parseLines([H | T], Rev) ->
-    Parsed = parse1(H, Rev),
-    Expr = removeStuff(Parsed),
+    Parsed = parse(H, Rev),
+    Expr = removeTail(Parsed),
     [Expr | parseLines(T, Rev)].
 
 %
 % Evaluate an expression
 %
-
 -type env() :: [{atom(),integer()}].
 
 -spec eval(env(),expr()) -> integer().
@@ -446,22 +446,46 @@ executeLines([H | T]) ->
     [integer_to_list(Val) | executeLines(T)].
 
 % RUNNING THE PROGRAM
-
 % Runs the program using eval method and writes output
 mymain1() ->
-    Lines = readlines("expressions.txt"),
-    Parsed = parseLines(Lines, 1),
-    Values = evalLines(Parsed),
-    Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
-    write_file("./output.txt", Text).
+    receive
+        start ->
+        Lines = readlines("expressions.txt"),
+        Parsed = parseLines(Lines, 1),
+        Values = evalLines(Parsed),
+        Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
+        write_file("./output.txt", Text);
+        stop -> true
+    end.
 
 mymain2() ->
-    Lines = readlines("expressions.txt"),
-    Parsed = parseLines(Lines, 0),
-    Values = executeLines(Parsed),
-    Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
-    write_file("./output2.txt", Text).
+    receive 
+        start ->
+        Lines = readlines("expressions.txt"),
+        Parsed = parseLines(Lines, 0),
+        Values = executeLines(Parsed),
+        Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
+        write_file("./output2.txt", Text);
+        stop -> true
+    end.
 
+go() -> 
+    % Spawn two children for the two mains 
+    register(parent, self()),
+
+    Pid = spawn(pr2, mymain1, []),
+    Pid2 = spawn(pr2, mymain2, []),
+
+    register(child1, Pid), 
+    register(child2, Pid2),
+
+    child1 ! start,
+    child2 ! start,
+    child1 ! stop, 
+    child2 ! stop, 
+    unregister(parent),
+    unregister(child1),
+    unregister(child2).
 
 % Auxiliary function: lookup a
 % key in a list of key-value pairs.
