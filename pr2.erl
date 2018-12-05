@@ -75,7 +75,7 @@ print({idiv,E1, E2}) ->
 
 % recognise a fully-bracketed expression, with no spaces etc.
 
-% REMOVE FOR TESTING
+% Removes the tail of a list 
 removeStuff({H,T}) ->
     H.
 
@@ -99,11 +99,11 @@ get_all_lines(Device) ->
 
 % Wrapper for the parse function as this removes all spacing, then calls the actual parse function
 % Takes a string of characters that represents an equation and returns it parsed. 
-parse(Line) -> 
+parse1(Line, Rev) -> 
     NewLine = re:replace(Line, "\s", "", [global,{return,list}]),
     Stack = parseShun(NewLine,[],[]),
     % io:format("NewStack ~p~n", [Stack]),
-    Infix = convertToString(lists:reverse(Stack), []),
+    Infix = convertToString(lists:reverse(Stack), [], Rev),
     % io:format("New Exp ~p~n", [Infix]),
     parse2(Infix).
 
@@ -166,6 +166,13 @@ parseShun([Ch|Rest], OutStack, OpStack) when ($0 =< Ch andalso Ch =< $9) orelse 
     % io:format("Ops ~p~n", [OpStack]),    
     parseShun(Remainder, NewOut, OpStack);
 
+% If variable add to output stack
+parseShun([Ch|Rest], OutStack, OpStack)  when $a =< Ch andalso Ch =< $z ->
+    {Succeeds,Remainder} = get_while(fun is_alpha/1,Rest),
+    Var = [Ch|Succeeds],
+    NewOut = [Var|OutStack],
+    parseShun(Remainder, NewOut, OpStack);
+
 % If Operator is "(" then add to operator stack
 parseShun([$(|Rest], OutStack, OpStack) ->
     parseShun(Rest, OutStack, ["("|OpStack]);
@@ -201,36 +208,52 @@ parseShun([], OutStack, OpStack) ->
 
 -type numStack() :: [string()].
 
--spec convertToString(outStack(), numStack()) -> string().
+-spec convertToString(outStack(), numStack(), integer()) -> string().
 
 %REMEBER TO REVERSE LIST BEFORE CALLING THIS
 % Converts the OutStack from the Shunting algorithom into a string, with correct "()"
 
-convertToString([], [H|T]) -> H;
+convertToString([], [H|T], Rev) -> H;
 
 % convertToString([], NumStack) -> NumStack;
 
 % If a number add to NumStack
-convertToString([H|Rest], NumStack) when ((H =/= $* andalso H =/= $#) andalso (H =/= $+ andalso H =/= $%)) ->
+convertToString([H|Rest], NumStack, Rev) when ((H =/= $* andalso H =/= $#) andalso (H =/= $+ andalso H =/= $%)) ->
     % io:format("Done ~p~n", [H]),
-    convertToString(Rest, [H|NumStack]);
+    convertToString(Rest, [H|NumStack], Rev);
 
 % If operator then pop next two numbers and add parentheses 
-convertToString([H|Rest], [N1, N2 | Tail]) when H == $* ->
+convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $* ->
     NewString = "(" ++ N1 ++ "*" ++ N2 ++ ")",
-    convertToString(Rest, [NewString | Tail]);
+    if 
+        Rev =:= 1 -> convertToString(Rest, ["(" ++ N2 ++ "*" ++ N1 ++ ")" | Tail], Rev);
+        true -> convertToString(Rest, [NewString | Tail], Rev)
+    end;
+    
 
-convertToString([H|Rest], [N1, N2 | Tail]) when H == $+ ->
+convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $+ ->
     NewString = "(" ++ N1 ++ "+" ++ N2 ++ ")",
-    convertToString(Rest, [NewString | Tail]);
+    if 
+        Rev =:= 1 -> convertToString(Rest, ["(" ++ N2 ++ "+" ++ N1 ++ ")" | Tail], Rev);
+        true -> convertToString(Rest, [NewString | Tail], Rev)
+    end;
+    
 
-convertToString([H|Rest], [N1, N2 | Tail]) when H == $# ->
+convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $# ->
     NewString = "(" ++ N1 ++ "#" ++ N2 ++ ")",
-    convertToString(Rest, [NewString | Tail]);
+    if 
+        Rev =:= 1 -> convertToString(Rest, ["(" ++ N2 ++ "#" ++ N1 ++ ")" | Tail], Rev);
+        true -> convertToString(Rest, [NewString | Tail], Rev)
+    end;
+    
 
-convertToString([H|Rest], [N1, N2 | Tail]) when H == $% ->
+convertToString([H|Rest], [N1, N2 | Tail], Rev) when H == $% ->
     NewString = "(" ++ N1 ++ "%" ++ N2 ++ ")",
-    convertToString(Rest, [NewString | Tail]).
+    if 
+        Rev =:= 1 -> convertToString(Rest, ["(" ++ N2 ++ "%" ++ N1 ++ ")" | Tail], Rev);
+        true -> convertToString(Rest, [NewString | Tail], Rev)
+    end.
+    
 
 -spec parse2(string()) -> {expr(), string()}.
 
@@ -302,12 +325,12 @@ get_while(_P,[]) ->
 % Reads each line of text and parses that text, returning a list of paresed text
 %-spec parseLines([string()]) -> [expr()].
 
-parseLines([]) -> [];
+parseLines([], Rev) -> [];
 
-parseLines([H | T]) ->
-    Parsed = parse(H),
+parseLines([H | T], Rev) ->
+    Parsed = parse1(H, Rev),
     Expr = removeStuff(Parsed),
-    [Expr | parseLines(T)].
+    [Expr | parseLines(T, Rev)].
 
 %
 % Evaluate an expression
@@ -413,15 +436,31 @@ run([],_Env,[N]) ->
 execute(Env,Expr) ->
     run(compile(Expr),Env).
 
+% Execute multiple lines of a list of expressions, uses the default environment given
+-spec executeLines([expr()]) -> [integer()].
+
+executeLines([]) -> [];
+
+executeLines([H | T]) ->
+    Val = execute([{a,23},{b,-12}], H),
+    [integer_to_list(Val) | executeLines(T)].
+
 % RUNNING THE PROGRAM
 
 % Runs the program using eval method and writes output
 mymain1() ->
-    Lines = readlines("test.txt"),
-    Parsed = parseLines(Lines),
+    Lines = readlines("expressions.txt"),
+    Parsed = parseLines(Lines, 1),
     Values = evalLines(Parsed),
     Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
     write_file("./output.txt", Text).
+
+mymain2() ->
+    Lines = readlines("expressions.txt"),
+    Parsed = parseLines(Lines, 0),
+    Values = executeLines(Parsed),
+    Text = [string:join(Values, io_lib:nl()), io_lib:nl()],
+    write_file("./output2.txt", Text).
 
 
 % Auxiliary function: lookup a
